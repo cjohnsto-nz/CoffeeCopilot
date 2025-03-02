@@ -23,13 +23,12 @@ def enhance_products():
 
     # Get all products from the whole_beans_view that haven't been enhanced yet
     view_query = """
-    SELECT DISTINCT v.parent_title, v.product_url, v.body_html, v.tags
+    SELECT DISTINCT v.parent_title, v.product_url, p.body_html, p.tags
     FROM whole_beans_view v
-    WHERE NOT EXISTS (
-        SELECT 1 FROM product_extended_details ed 
-        JOIN products p ON p.id = ed.product_id
-        WHERE p.url = v.product_url
-    )
+    LEFT JOIN product_extended_details ed ON v.product_id = ed.product_id
+    JOIN products p ON v.product_id = p.id
+    WHERE ed.id IS NULL
+    ORDER BY v.parent_title
     """
 
     products = session.execute(text(view_query)).fetchall()
@@ -84,22 +83,37 @@ def print_extracted_data(product, coffee_data):
     print(f"URL: {product.product_url}")
     print()
     
+    print("Raw coffee_data:")
+    print(coffee_data)
+    print()
+    
     print("Extracted Data:")
     print(f"Type: {'Single Origin' if coffee_data.get('is_single_origin') else ('Blend' if coffee_data.get('is_single_origin') == False else 'Unknown')}")
     print(f"Origin: {coffee_data.get('origin', {}).get('country')}, {coffee_data.get('origin', {}).get('region')}")
     print(f"Process: {coffee_data.get('processing_method')}")
-    print(f"Varietals: {', '.join(coffee_data.get('varietals', []))}")
+    
+    # Handle varietals that might be None
+    varietals = coffee_data.get('varietals')
+    if varietals:
+        if isinstance(varietals, str):
+            print(f"Varietals: {varietals}")
+        else:
+            print(f"Varietals: {', '.join(varietals)}")
+    else:
+        print("Varietals: None")
+        
     print(f"Farm: {coffee_data.get('farm')}")
     print(f"Producer: {coffee_data.get('producer')}")
     print(f"Altitude: {coffee_data.get('altitude')}")
     
-    # Pretty print tasting notes
-    print("Tasting Notes: {")
-    for category, notes in coffee_data.get('tasting_notes', {}).items():
-        notes_str = ', '.join([f'"{note}"' for note in notes]) if notes else ''
-        print(f'  "{category}": [{notes_str}]')
-    print("}")
-    
+    # Print categorized tasting notes
+    tasting_notes = coffee_data.get('tasting_notes', {})
+    print("Tasting Notes:")
+    for category in ['fruits', 'sweets', 'florals', 'spices', 'others']:
+        notes = tasting_notes.get(category, [])
+        if notes:
+            print(f"  {category.title()}: {', '.join(notes)}")
+        
     print(f"Recommended Rest: {coffee_data.get('resting_period_days')} days")
     print(f"Confidence: {coffee_data.get('confidence_score', 0.0):.2f}\n")
 
@@ -111,6 +125,11 @@ def store_extended_details(product, coffee_data, session):
         session.delete(existing)
         session.commit()
     
+    # Handle farm data - if it's a list, join with commas
+    farm = coffee_data.get('farm')
+    if isinstance(farm, list):
+        farm = ', '.join(farm)
+    
     # Store the extended details
     extended_details = ProductExtendedDetails(
         product_id=product.id,
@@ -120,9 +139,9 @@ def store_extended_details(product, coffee_data, session):
         processing_method=coffee_data.get('processing_method'),
         varietals=','.join(coffee_data.get('varietals', [])) if coffee_data.get('varietals') else None,
         altitude=coffee_data.get('altitude'),
-        farm=coffee_data.get('farm'),
+        farm=farm,
         producer=coffee_data.get('producer'),
-        tasting_notes=coffee_data.get('tasting_notes', {'fruits': [], 'sweets': [], 'florals': [], 'spices': [], 'others': []}),
+        tasting_notes=coffee_data.get('tasting_notes'),
         resting_period_days=coffee_data.get('resting_period_days'),
         extraction_confidence=coffee_data.get('confidence_score', 0.0),
         last_updated=datetime.now()

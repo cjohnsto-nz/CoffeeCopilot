@@ -132,15 +132,27 @@ def init_db():
 
 def create_beans_view(engine):
     """Create a view for whole bean products"""
-    drop_view_query = "DROP VIEW IF EXISTS whole_beans_view;"
-    view_query = """
+    drop_sql = "DROP VIEW IF EXISTS whole_beans_view"
+    view_sql = """
     CREATE VIEW whole_beans_view AS
-    WITH RankedVariants AS (
+    WITH ranked_variants AS (
         SELECT 
-            v.*,
+            v.parent_title,
+            r.name as roaster_name,
+            v.price,
+            v.option1,
+            v.option2,
+            v.option3,
+            v.available,
             p.url as product_url,
-            p.body_html,
-            p.tags,
+            p.id as product_id,
+            CASE 
+                WHEN LOWER(v.parent_title) LIKE '%blend%' THEN 'Blend'
+                WHEN ed.is_single_origin = 1 THEN 'Single Origin'
+                WHEN ed.is_single_origin = 0 THEN 'Blend'
+                WHEN LOWER(v.parent_title) LIKE '% and %' OR LOWER(v.parent_title) LIKE '% & %' THEN 'Blend'
+                ELSE 'Unknown'
+            END as coffee_type,
             ed.origin_country,
             ed.origin_region,
             ed.processing_method,
@@ -157,33 +169,34 @@ def create_beans_view(engine):
                 ELSE NULL
             END as adjusted_resting_period_days,
             ROW_NUMBER() OVER (
-                PARTITION BY v.parent_title, v.vendor 
+                PARTITION BY v.parent_title, r.name 
                 ORDER BY v.grams
             ) as rank
         FROM variants v
         JOIN products p ON v.product_id = p.id
+        JOIN roasters r ON p.roaster_id = r.id
         LEFT JOIN product_extended_details ed ON p.id = ed.product_id
         WHERE LOWER(v.option2) LIKE '%bean%'
-        AND v.grams BETWEEN 200 AND 250
+        AND (v.option1 like '%250%' OR v.option1 like '%200g%')
         AND LOWER(v.parent_title) NOT LIKE '%espresso%'
         AND LOWER(v.parent_title) NOT LIKE '%subscription%'
         AND LOWER(v.parent_title) NOT LIKE '%decaf%'
+        AND LOWER(v.parent_title) NOT LIKE '%voucher%'
         AND v.vendor != 'AAZ B2B'
+        AND (v.option3 != 'READY TO DRINK' OR v.option3 IS NULL)
+        AND v.available = 1
     )
     SELECT 
         rv.parent_title,
-        rv.vendor,
-        rv.title as variant_title,
+        rv.roaster_name,
         rv.price,
-        rv.grams,
         rv.option1,
         rv.option2,
         rv.option3,
         rv.available,
-        rv.sku,
         rv.product_url,
-        rv.body_html,
-        rv.tags,
+        rv.product_id,
+        rv.coffee_type,
         rv.origin_country,
         rv.origin_region,
         rv.processing_method,
@@ -196,17 +209,14 @@ def create_beans_view(engine):
         rv.is_single_origin,
         rv.resting_period_days,
         rv.adjusted_resting_period_days,
-        CASE 
-            WHEN rv.is_single_origin = 1 THEN 'Single Origin'
-            WHEN rv.is_single_origin = 0 THEN 'Blend'
-            ELSE NULL
-        END as coffee_type
-    FROM RankedVariants rv
-    WHERE rv.rank = 1;
+        rv.rank
+    FROM ranked_variants rv
+    WHERE rv.rank = 1
     """
     with engine.connect() as conn:
-        conn.execute(text(drop_view_query))
-        conn.execute(text(view_query))
+        conn.execute(text(drop_sql))
+        conn.execute(text(view_sql))
+        conn.commit()
 
 def get_session():
     """Get a new database session"""

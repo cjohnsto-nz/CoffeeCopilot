@@ -11,6 +11,9 @@ roasters:
   ozone:
     name: ozone
     url: https://ozonecoffee.co.nz
+  wolf:
+    name: wolf
+    url: https://www.wolfcoffee.co.nz/
 
 ai:
   provider: "azure"  # Future-proofing for other providers
