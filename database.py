@@ -1,112 +1,134 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, Table, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, Table, text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 
+# Create engine with SQLite's native Unicode support
+engine = create_engine('sqlite:///coffee_data.db', connect_args={'check_same_thread': False})
 Base = declarative_base()
 
 class Roaster(Base):
     __tablename__ = 'roasters'
     
     id = Column(Integer, primary_key=True)
-    name = Column(String)
-    url = Column(String, unique=True)
+    name = Column(String(100))
+    url = Column(String(500))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
     products = relationship("Product", back_populates="roaster")
-    last_updated = Column(DateTime, default=datetime.now)
 
 class Product(Base):
     __tablename__ = 'products'
     
     id = Column(Integer, primary_key=True)
     roaster_id = Column(Integer, ForeignKey('roasters.id'))
-    roaster = relationship("Roaster", back_populates="products")
-    
-    # Basic product info
-    title = Column(String)
-    handle = Column(String)
-    body_html = Column(String)
+    title = Column(String(200))
+    handle = Column(String(200))
+    body_html = Column(String)  # SQLite handles Unicode natively
     published_at = Column(DateTime)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     vendor = Column(String)
     product_type = Column(String)
     tags = Column(String)
-    url = Column(String)
+    url = Column(String(500))
+    parent_title = Column(String(200))
+    last_updated = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Relationships
+    roaster = relationship("Roaster", back_populates="products")
     options = relationship("ProductOption", back_populates="product", cascade="all, delete-orphan")
-    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
     variants = relationship("Variant", back_populates="product", cascade="all, delete-orphan")
+    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
     extended_details = relationship("ProductExtendedDetails", back_populates="product", uselist=False, cascade="all, delete-orphan")
-    
-    last_updated = Column(DateTime, default=datetime.now)
-
-class ProductExtendedDetails(Base):
-    __tablename__ = 'product_extended_details'
-    
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey('products.id'), unique=True)
-    product = relationship("Product", back_populates="extended_details")
-    
-    # AI-extracted coffee info
-    is_single_origin = Column(Integer)  # 1 for single origin, 0 for blend, NULL if unknown
-    origin_country = Column(String)
-    origin_region = Column(String)
-    processing_method = Column(String)
-    varietals = Column(String)  # Comma-separated list
-    altitude = Column(String)  # Using string to handle ranges and units
-    farm = Column(String)
-    producer = Column(String)
-    tasting_notes = Column(JSON)  # Structured as {"fruits": [], "sweets": [], etc.}
-    resting_period_days = Column(Integer)  # Recommended resting period in days
-    extraction_confidence = Column(Float)
-    last_updated = Column(DateTime, default=datetime.now)
 
 class ProductOption(Base):
     __tablename__ = 'product_options'
     
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey('products.id'))
-    product = relationship("Product", back_populates="options")
-    name = Column(String)
-    values = Column(String)  # Comma-separated list
-    last_updated = Column(DateTime, default=datetime.now)
-
-class ProductImage(Base):
-    __tablename__ = 'product_images'
-    
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey('products.id'))
-    product = relationship("Product", back_populates="images")
-    url = Column(String)
+    name = Column(String(100))
     position = Column(Integer)
-    last_updated = Column(DateTime, default=datetime.now)
+    values = Column(JSON)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Relationships
+    product = relationship("Product", back_populates="options")
 
 class Variant(Base):
     __tablename__ = 'variants'
     
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey('products.id'))
-    product = relationship("Product", back_populates="variants")
-    
-    title = Column(String)
-    available = Column(Integer)
+    title = Column(String(200))
+    available = Column(Integer, default=0)
     compare_at_price = Column(Float)
-    created_at = Column(DateTime)
-    featured_image = Column(String)
+    featured_image = Column(String(500))
     grams = Column(Integer)
-    option1 = Column(String)
-    option2 = Column(String)
-    option3 = Column(String)
+    option1 = Column(String(100))
+    option2 = Column(String(100))
+    option3 = Column(String(100))
     position = Column(Integer)
     price = Column(Float)
-    requires_shipping = Column(Integer)
-    sku = Column(String)
-    taxable = Column(Integer)
-    updated_at = Column(DateTime)
-    parent_title = Column(String)
-    vendor = Column(String)
+    requires_shipping = Column(Integer, default=1)
+    sku = Column(String(100))
+    taxable = Column(Integer, default=1)
+    parent_title = Column(String(200))
+    vendor = Column(String(200))
+    weight = Column(Float)
+    weight_unit = Column(String(10))
+    barcode = Column(String(100))
+    inventory_quantity = Column(Integer)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     last_updated = Column(DateTime, default=datetime.now)
+    
+    # Relationships
+    product = relationship("Product", back_populates="variants")
+
+class ProductImage(Base):
+    __tablename__ = 'product_images'
+    
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('products.id'))
+    position = Column(Integer)
+    src = Column(String(500))
+    width = Column(Integer)
+    height = Column(Integer)
+    alt = Column(String(200))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Relationships
+    product = relationship("Product", back_populates="images")
+
+class ProductExtendedDetails(Base):
+    __tablename__ = 'product_extended_details'
+    
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('products.id'), unique=True)
+    is_single_origin = Column(Boolean)
+    origin_country = Column(String(100))
+    origin_region = Column(String(100))
+    processing_method = Column(String(100))
+    varietals = Column(String(500))  # Comma-separated list
+    altitude = Column(String(100))
+    farm = Column(String(200))
+    producer = Column(String(200))
+    tasting_notes = Column(JSON)
+    resting_period_days = Column(Integer)
+    extraction_confidence = Column(Float)
+    last_updated = Column(DateTime, default=datetime.now)
+    
+    # Relationships
+    product = relationship("Product", back_populates="extended_details")
+
+def init_db():
+    """Initialize the database, creating all tables and views"""
+    Base.metadata.create_all(engine)
+    create_beans_view(engine)
 
 def create_beans_view(engine):
     """Create a view for whole bean products"""
@@ -117,6 +139,8 @@ def create_beans_view(engine):
         SELECT 
             v.*,
             p.url as product_url,
+            p.body_html,
+            p.tags,
             ed.origin_country,
             ed.origin_region,
             ed.processing_method,
@@ -158,6 +182,8 @@ def create_beans_view(engine):
         rv.available,
         rv.sku,
         rv.product_url,
+        rv.body_html,
+        rv.tags,
         rv.origin_country,
         rv.origin_region,
         rv.processing_method,
@@ -181,16 +207,8 @@ def create_beans_view(engine):
     with engine.connect() as conn:
         conn.execute(text(drop_view_query))
         conn.execute(text(view_query))
-        conn.commit()
-
-def init_db():
-    """Initialize the database, creating all tables and views"""
-    engine = create_engine('sqlite:///coffee_data.db')
-    Base.metadata.create_all(engine)
-    create_beans_view(engine)
 
 def get_session():
     """Get a new database session"""
-    engine = create_engine('sqlite:///coffee_data.db')
     Session = sessionmaker(bind=engine)
     return Session()

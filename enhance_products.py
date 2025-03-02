@@ -1,4 +1,4 @@
-from database import get_session, Product, ProductExtendedDetails
+from database import get_session, Product, ProductExtendedDetails, ProductImage
 from ai_coffee_extractor import AICoffeeExtractor
 from sqlalchemy import text
 from datetime import datetime
@@ -23,12 +23,12 @@ def enhance_products():
 
     # Get all products from the whole_beans_view that haven't been enhanced yet
     view_query = """
-    SELECT DISTINCT p.id, p.title, p.body_html, p.tags, p.url, v.parent_title
-    FROM products p
-    INNER JOIN whole_beans_view v ON v.product_url = p.url
+    SELECT DISTINCT v.parent_title, v.product_url, v.body_html, v.tags
+    FROM whole_beans_view v
     WHERE NOT EXISTS (
         SELECT 1 FROM product_extended_details ed 
-        WHERE ed.product_id = p.id
+        JOIN products p ON p.id = ed.product_id
+        WHERE p.url = v.product_url
     )
     """
 
@@ -38,57 +38,156 @@ def enhance_products():
 
     # Process each product
     for i, product in enumerate(products, 1):
-        print(f"\nProcessing [{i}/{total_products}]: {product.title}")
+        print(f"\nProcessing [{i}/{total_products}]: {product.parent_title}")
+        print(f"URL: {product.product_url}")
+        
+        # Get the complete HTML content
+        scraped_html = get_product_html(product.product_url)
+        
+        # Get the product record
+        db_product = session.query(Product).filter(Product.url == product.product_url).first()
+        if not db_product:
+            print(f"Error: Could not find product with URL {product.product_url}")
+            continue
+            
+        # Get the first product image URL if available
+        first_image = session.query(ProductImage).filter(
+            ProductImage.product_id == db_product.id,
+            ProductImage.position == 1
+        ).first()
+        image_url = first_image.src if first_image else None
+
+        try:
+            # Extract coffee data using AI
+            coffee_data = extractor.extract_coffee_data(
+                body_html=product.body_html,
+                tags=product.tags.split(',') if product.tags else [],
+                scraped_html=scraped_html,
+                parent_title=product.parent_title,
+                image_url=image_url
+            )
+        except Exception as e:
+            print(f"Error extracting coffee data: {str(e)}")
+            coffee_data = extractor._get_empty_result()
+        
+        print_extracted_data(product, coffee_data)
+        
+        # Store the extended details
+        store_extended_details(db_product, coffee_data, session)
+        session.commit()  # Commit after each product to avoid losing progress
+        
+    print("\nAll products have been enhanced")
+
+def print_extracted_data(product, coffee_data):
+    """Print extracted coffee data in a readable format"""
+    print(f"\nProcessing: {product.parent_title}")
+    print(f"URL: {product.product_url}")
+    print()
+    
+    print("Extracted Data:")
+    print(f"Type: {'Single Origin' if coffee_data.get('is_single_origin') else ('Blend' if coffee_data.get('is_single_origin') == False else 'Unknown')}")
+    print(f"Origin: {coffee_data.get('origin', {}).get('country')}, {coffee_data.get('origin', {}).get('region')}")
+    print(f"Process: {coffee_data.get('processing_method')}")
+    print(f"Varietals: {', '.join(coffee_data.get('varietals', []))}")
+    print(f"Farm: {coffee_data.get('farm')}")
+    print(f"Producer: {coffee_data.get('producer')}")
+    print(f"Altitude: {coffee_data.get('altitude')}")
+    
+    # Pretty print tasting notes
+    print("Tasting Notes: {")
+    for category, notes in coffee_data.get('tasting_notes', {}).items():
+        notes_str = ', '.join([f'"{note}"' for note in notes]) if notes else ''
+        print(f'  "{category}": [{notes_str}]')
+    print("}")
+    
+    print(f"Recommended Rest: {coffee_data.get('resting_period_days')} days")
+    print(f"Confidence: {coffee_data.get('confidence_score', 0.0):.2f}\n")
+
+def store_extended_details(product, coffee_data, session):
+    """Store the extended details, handling missing or empty data safely"""
+    # Check if there's an existing record
+    existing = session.query(ProductExtendedDetails).filter_by(product_id=product.id).first()
+    if existing:
+        session.delete(existing)
+        session.commit()
+    
+    # Store the extended details
+    extended_details = ProductExtendedDetails(
+        product_id=product.id,
+        is_single_origin=1 if coffee_data.get('is_single_origin') == True else (0 if coffee_data.get('is_single_origin') == False else None),
+        origin_country=coffee_data.get('origin', {}).get('country'),
+        origin_region=coffee_data.get('origin', {}).get('region'),
+        processing_method=coffee_data.get('processing_method'),
+        varietals=','.join(coffee_data.get('varietals', [])) if coffee_data.get('varietals') else None,
+        altitude=coffee_data.get('altitude'),
+        farm=coffee_data.get('farm'),
+        producer=coffee_data.get('producer'),
+        tasting_notes=coffee_data.get('tasting_notes', {'fruits': [], 'sweets': [], 'florals': [], 'spices': [], 'others': []}),
+        resting_period_days=coffee_data.get('resting_period_days'),
+        extraction_confidence=coffee_data.get('confidence_score', 0.0),
+        last_updated=datetime.now()
+    )
+    session.add(extended_details)
+
+def enhance_single_product(product_id: int, session=None):
+    """Enhance a single product with AI extraction"""
+    session_created = False
+    if session is None:
+        session = get_session()
+        session_created = True
+        
+    try:
+        # Get the product
+        product = session.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            print(f"Product {product_id} not found")
+            return
+            
+        # Initialize AI extractor
+        extractor = AICoffeeExtractor()
+        
+        print(f"\nProcessing: {product.title}")
         print(f"URL: {product.url}")
         
         # Get the complete HTML content
         scraped_html = get_product_html(product.url)
         
-        # Extract coffee data using AI
-        coffee_data = extractor.extract_coffee_data(
-            body_html=product.body_html,
-            tags=product.tags.split(',') if product.tags else [],
-            scraped_html=scraped_html,  # Add the scraped HTML to the extraction
-            parent_title=product.parent_title  # Add the parent title
-        )
+        # Get the first product image URL if available
+        first_image = session.query(ProductImage).filter(
+            ProductImage.product_id == product.id,
+            ProductImage.position == 1
+        ).first()
+        image_url = first_image.src if first_image else None
         
-        print("Extracted Data:")
-        print(f"Type: {'Single Origin' if coffee_data['is_single_origin'] else ('Blend' if coffee_data['is_single_origin'] == False else 'Unknown')}")
-        print(f"Origin: {coffee_data['origin']['country']}, {coffee_data['origin']['region']}")
-        print(f"Process: {coffee_data['processing_method']}")
-        print(f"Varietals: {', '.join(coffee_data['varietals']) if coffee_data['varietals'] else 'None'}")
-        print(f"Farm: {coffee_data['farm']}")
-        print(f"Producer: {coffee_data['producer']}")
-        print(f"Altitude: {coffee_data['altitude']}")
-        print(f"Tasting Notes: {json.dumps(coffee_data['tasting_notes'], indent=2)}")
-        print(f"Recommended Rest: {coffee_data['resting_period_days']} days")
-        print(f"Confidence: {coffee_data['confidence_score']:.2f}")
+        if image_url:
+            print(f"Image URL: {image_url}")
+        else:
+            print("No image found")
 
-        # Handle farm field - convert list to string if needed
-        farm = coffee_data['farm']
-        if isinstance(farm, list):
-            farm = ', '.join(farm)
-
-        # Create extended details
-        extended_details = ProductExtendedDetails(
-            product_id=product.id,
-            is_single_origin=1 if coffee_data['is_single_origin'] == True else (0 if coffee_data['is_single_origin'] == False else None),
-            origin_country=coffee_data['origin']['country'],
-            origin_region=coffee_data['origin']['region'],
-            processing_method=coffee_data['processing_method'],
-            varietals=','.join(coffee_data['varietals']) if coffee_data['varietals'] else None,
-            altitude=coffee_data['altitude'],
-            farm=farm,
-            producer=coffee_data['producer'],
-            tasting_notes=coffee_data['tasting_notes'],
-            resting_period_days=coffee_data['resting_period_days'],
-            extraction_confidence=coffee_data['confidence_score'],
-            last_updated=datetime.now()
-        )
-        session.add(extended_details)
-        session.commit()  # Commit after each product to avoid losing progress
+        try:
+            # Extract coffee data using AI
+            coffee_data = extractor.extract_coffee_data(
+                body_html=product.body_html,
+                tags=product.tags.split(',') if product.tags else [],
+                scraped_html=scraped_html,
+                parent_title=product.parent_title,
+                image_url=image_url
+            )
+        except Exception as e:
+            print(f"Error extracting coffee data: {str(e)}")
+            coffee_data = extractor._get_empty_result()
         
-    print("\nAll products have been enhanced")
+        print_extracted_data(product, coffee_data)
+        
+        # Store the extended details
+        store_extended_details(product, coffee_data, session)
+        session.commit()
+        
+    except Exception as e:
+        print(f"Error processing product {product_id}: {str(e)}")
+    finally:
+        if session_created and session:
+            session.close()
 
 if __name__ == "__main__":
-    enhance_products()
+    enhance_single_product(8)
