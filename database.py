@@ -1,6 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, Table, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -8,15 +9,19 @@ class Roaster(Base):
     __tablename__ = 'roasters'
     
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    url = Column(String, nullable=False)
+    name = Column(String)
+    url = Column(String, unique=True)
     products = relationship("Product", back_populates="roaster")
+    last_updated = Column(DateTime, default=datetime.now)
 
 class Product(Base):
     __tablename__ = 'products'
     
     id = Column(Integer, primary_key=True)
     roaster_id = Column(Integer, ForeignKey('roasters.id'))
+    roaster = relationship("Roaster", back_populates="products")
+    
+    # Basic product info
     title = Column(String)
     handle = Column(String)
     body_html = Column(String)
@@ -25,22 +30,65 @@ class Product(Base):
     updated_at = Column(DateTime)
     vendor = Column(String)
     product_type = Column(String)
-    tags = Column(String)  # Store as comma-separated string
+    tags = Column(String)
     url = Column(String)
-    price = Column(Float)
-    description = Column(String)
-    last_updated = Column(DateTime)
     
-    roaster = relationship("Roaster", back_populates="products")
-    variants = relationship("Variant", back_populates="product")
-    options = relationship("ProductOption", back_populates="product")
-    images = relationship("ProductImage", back_populates="product")
+    # Relationships
+    options = relationship("ProductOption", back_populates="product", cascade="all, delete-orphan")
+    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
+    variants = relationship("Variant", back_populates="product", cascade="all, delete-orphan")
+    extended_details = relationship("ProductExtendedDetails", back_populates="product", uselist=False, cascade="all, delete-orphan")
+    
+    last_updated = Column(DateTime, default=datetime.now)
+
+class ProductExtendedDetails(Base):
+    __tablename__ = 'product_extended_details'
+    
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('products.id'), unique=True)
+    product = relationship("Product", back_populates="extended_details")
+    
+    # AI-extracted coffee info
+    is_single_origin = Column(Integer)  # 1 for single origin, 0 for blend, NULL if unknown
+    origin_country = Column(String)
+    origin_region = Column(String)
+    processing_method = Column(String)
+    varietals = Column(String)  # Comma-separated list
+    altitude = Column(String)  # Using string to handle ranges and units
+    farm = Column(String)
+    producer = Column(String)
+    tasting_notes = Column(JSON)  # Structured as {"fruits": [], "sweets": [], etc.}
+    resting_period_days = Column(Integer)  # Recommended resting period in days
+    extraction_confidence = Column(Float)
+    last_updated = Column(DateTime, default=datetime.now)
+
+class ProductOption(Base):
+    __tablename__ = 'product_options'
+    
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('products.id'))
+    product = relationship("Product", back_populates="options")
+    name = Column(String)
+    values = Column(String)  # Comma-separated list
+    last_updated = Column(DateTime, default=datetime.now)
+
+class ProductImage(Base):
+    __tablename__ = 'product_images'
+    
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('products.id'))
+    product = relationship("Product", back_populates="images")
+    url = Column(String)
+    position = Column(Integer)
+    last_updated = Column(DateTime, default=datetime.now)
 
 class Variant(Base):
     __tablename__ = 'variants'
     
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey('products.id'))
+    product = relationship("Product", back_populates="variants")
+    
     title = Column(String)
     available = Column(Integer)
     compare_at_price = Column(Float)
@@ -52,38 +100,16 @@ class Variant(Base):
     option3 = Column(String)
     position = Column(Integer)
     price = Column(Float)
-    requires_shipping = Column(Integer)  # Store as 0/1 for boolean
+    requires_shipping = Column(Integer)
     sku = Column(String)
-    taxable = Column(Integer)  # Store as 0/1 for boolean
+    taxable = Column(Integer)
     updated_at = Column(DateTime)
     parent_title = Column(String)
     vendor = Column(String)
-    weight = Column(String)
-    last_updated = Column(DateTime)
-    
-    product = relationship("Product", back_populates="variants")
-
-class ProductOption(Base):
-    __tablename__ = 'product_options'
-    
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey('products.id'))
-    name = Column(String)
-    values = Column(String)  # Store as comma-separated string
-    
-    product = relationship("Product", back_populates="options")
-
-class ProductImage(Base):
-    __tablename__ = 'product_images'
-    
-    id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey('products.id'))
-    url = Column(String)
-    position = Column(Integer)
-    
-    product = relationship("Product", back_populates="images")
+    last_updated = Column(DateTime, default=datetime.now)
 
 def create_beans_view(engine):
+    """Create a view for whole bean products"""
     drop_view_query = "DROP VIEW IF EXISTS whole_beans_view;"
     view_query = """
     CREATE VIEW whole_beans_view AS
@@ -91,17 +117,34 @@ def create_beans_view(engine):
         SELECT 
             v.*,
             p.url as product_url,
+            ed.origin_country,
+            ed.origin_region,
+            ed.processing_method,
+            ed.varietals,
+            ed.altitude,
+            ed.farm,
+            ed.producer,
+            ed.tasting_notes,
+            ed.extraction_confidence,
+            ed.is_single_origin,
+            ed.resting_period_days,
+            CASE 
+                WHEN ed.resting_period_days IS NOT NULL THEN ed.resting_period_days * 2
+                ELSE NULL
+            END as adjusted_resting_period_days,
             ROW_NUMBER() OVER (
                 PARTITION BY v.parent_title, v.vendor 
                 ORDER BY v.grams
             ) as rank
         FROM variants v
         JOIN products p ON v.product_id = p.id
+        LEFT JOIN product_extended_details ed ON p.id = ed.product_id
         WHERE LOWER(v.option2) LIKE '%bean%'
         AND v.grams BETWEEN 200 AND 250
         AND LOWER(v.parent_title) NOT LIKE '%espresso%'
         AND LOWER(v.parent_title) NOT LIKE '%subscription%'
         AND LOWER(v.parent_title) NOT LIKE '%decaf%'
+        AND v.vendor != 'AAZ B2B'
     )
     SELECT 
         rv.parent_title,
@@ -114,7 +157,24 @@ def create_beans_view(engine):
         rv.option3,
         rv.available,
         rv.sku,
-        rv.product_url
+        rv.product_url,
+        rv.origin_country,
+        rv.origin_region,
+        rv.processing_method,
+        rv.varietals,
+        rv.altitude,
+        rv.farm,
+        rv.producer,
+        rv.tasting_notes,
+        rv.extraction_confidence,
+        rv.is_single_origin,
+        rv.resting_period_days,
+        rv.adjusted_resting_period_days,
+        CASE 
+            WHEN rv.is_single_origin = 1 THEN 'Single Origin'
+            WHEN rv.is_single_origin = 0 THEN 'Blend'
+            ELSE NULL
+        END as coffee_type
     FROM RankedVariants rv
     WHERE rv.rank = 1;
     """
@@ -124,20 +184,13 @@ def create_beans_view(engine):
         conn.commit()
 
 def init_db():
+    """Initialize the database, creating all tables and views"""
     engine = create_engine('sqlite:///coffee_data.db')
     Base.metadata.create_all(engine)
     create_beans_view(engine)
-    return engine
 
 def get_session():
+    """Get a new database session"""
     engine = create_engine('sqlite:///coffee_data.db')
     Session = sessionmaker(bind=engine)
     return Session()
-
-def get_beans():
-    session = get_session()
-    result = session.execute(text("SELECT * FROM whole_beans_view"))
-    columns = result.keys()
-    beans = [dict(zip(columns, row)) for row in result]
-    session.close()
-    return beans

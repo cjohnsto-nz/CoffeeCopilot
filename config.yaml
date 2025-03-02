@@ -3,3 +3,19 @@ roaster_urls:
   vanguard: "https://vanguardcoffee.co.nz"
   grey_coffee: "https://greyroastingco.com/"
   ozone: "https://ozonecoffee.co.nz"
+
+ai:
+  provider: "azure"  # Future-proofing for other providers
+  azure:
+    # All sensitive values loaded from environment variables
+    api_key: "${AZURE_OPENAI_API_KEY}"
+    api_base: "${AZURE_OPENAI_ENDPOINT}"
+    deployment_name: "${AZURE_OPENAI_DEPLOYMENT}"
+    api_version: "${AZURE_OPENAI_API_VERSION}"
+    temperature: 0.0  # Keep it deterministic for data extraction
+    response_format: "json_object"  # Use structured output
+  
+  # Extraction settings
+  max_retries: 3
+  timeout_seconds: 30
+  batch_size: 10  # Number of products to process in parallel
