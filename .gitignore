@@ -26,6 +26,9 @@ ENV/
 .env.local
 .env.*.local
 
+# Project specific
+prompt_logs/
+
 # OS
 .DS_Store
 Thumbs.db

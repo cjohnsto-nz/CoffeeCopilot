@@ -10,6 +10,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 import base64
+from datetime import datetime
 
 class AICoffeeExtractor:
     def __init__(self):
@@ -33,22 +34,31 @@ class AICoffeeExtractor:
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
         self.temperature = self.ai_config['azure']['temperature']
         self.max_retries = self.ai_config['max_retries']
-
+        
+        # Create prompt logs directory
+        self.prompt_log_dir = "prompt_logs"
+        os.makedirs(self.prompt_log_dir, exist_ok=True)
+        
     def _clean_html(self, html_content: str) -> str:
         """Clean HTML content and extract text"""
         if not html_content:
             return ""
         soup = BeautifulSoup(html_content, 'html.parser')
+        
         # Remove script and style elements
         for script in soup(['script', 'style']):
             script.decompose()
-        # Get text while preserving some structure
-        lines = []
-        for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']):
-            text = element.get_text(strip=True)
-            if text:
-                lines.append(text)
-        return '\n'.join(lines)
+            
+        # Find all divs with 'desc' in their class name (catches description, desc, etc.)
+        desc_divs = soup.find_all('div', class_=lambda x: x and 'desc' in x.lower())
+        
+        # Only use description divs, no fallback
+        text = []
+        for div in desc_divs:
+            # Keep line breaks for structure
+            lines = [line.strip() for line in div.get_text().split('\n') if line.strip()]
+            text.extend(lines)
+        return '\n'.join(text)
 
     def _get_empty_result(self) -> Dict:
         """Return an empty result structure"""
@@ -107,6 +117,20 @@ class AICoffeeExtractor:
         except Exception as e:
             print(f"Error processing image: {str(e)}")
             return None
+
+    def _dump_prompt(self, prompt: str, title: str, url: str):
+        """Dump prompt to a file for debugging"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
+        filename = f"{self.prompt_log_dir}/{timestamp}_{safe_title}.txt"
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"Product: {title}\n")
+            f.write(f"URL: {url}\n")
+            f.write("="*80 + "\n\n")
+            f.write(prompt)
+            
+        print(f"Prompt dumped to: {filename}")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=60, min=60, max=180))
     def extract_coffee_data(self, body_html: str, tags: List[str] = None, scraped_html: str = None, parent_title: str = None, image_url: str = None) -> Dict:
@@ -175,7 +199,8 @@ class AICoffeeExtractor:
             
             # Create final prompt
             prompt = f"""Extract coffee product details from this text. Pay special attention to the PRODUCT TITLE for determining if this is a blend or single origin coffee, and consider any details found in the IMAGE ANALYSIS if present.
-
+            Attempt to identify the origin, processing method, varietals, altitude, farm, producer, and tasting notes. 
+            You are provided shop data, a scraped html page, and an analysis of the product image in order to extract this information.
             Return a JSON object with these fields:
             - is_single_origin: true/false/null (if unclear)
               - true if it's from one specific farm, producer, or region
@@ -206,6 +231,9 @@ class AICoffeeExtractor:
 
             Text:
             {'\n'.join(text)}"""
+            
+            # Dump prompt to file
+            self._dump_prompt(prompt, parent_title or "Unknown", body_html[:200] if body_html else "No HTML")
 
             # Get completion from Azure OpenAI
             completion = self.client.chat.completions.create(
