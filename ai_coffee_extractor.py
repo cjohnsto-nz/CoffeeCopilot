@@ -6,6 +6,10 @@ from bs4 import BeautifulSoup
 import yaml
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
+import requests
+from io import BytesIO
+from PIL import Image
+import base64
 
 class AICoffeeExtractor:
     def __init__(self):
@@ -15,8 +19,9 @@ class AICoffeeExtractor:
         
         # Load config
         with open('config.yaml', 'r') as f:
-            config = yaml.safe_load(f)
-            self.ai_config = config['ai']
+            self.config = yaml.safe_load(f)
+            self.ai_config = self.config['ai']
+            self.image_config = self.config['image_processing']
 
         # Initialize Azure OpenAI client
         self.client = AzureOpenAI(
@@ -68,8 +73,43 @@ class AICoffeeExtractor:
             "confidence_score": 0.0
         }
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    def extract_coffee_data(self, body_html: str, tags: List[str] = None, scraped_html: str = None, parent_title: str = None) -> Dict:
+    def _downsample_image(self, image_url: str) -> str:
+        """Download, downsample maintaining aspect ratio, and convert image to base64"""
+        try:
+            # Get config values
+            target_height = self.image_config['target_height']
+            jpeg_quality = self.image_config['jpeg_quality']
+            
+            # Download image
+            response = requests.get(image_url)
+            response.raise_for_status()
+            
+            # Open image
+            img = Image.open(BytesIO(response.content))
+            img = img.convert('RGB')  # Convert to RGB to ensure JPEG compatibility
+            
+            # Calculate new width to maintain aspect ratio
+            aspect_ratio = img.width / img.height
+            new_width = int(target_height * aspect_ratio)
+            
+            # Resize image maintaining aspect ratio
+            img = img.resize((new_width, target_height), Image.Resampling.LANCZOS)
+            
+            # Save to BytesIO in JPEG format with compression
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=jpeg_quality, optimize=True)
+            output.seek(0)
+            
+            # Convert to base64
+            base64_image = base64.b64encode(output.getvalue()).decode('utf-8')
+            return f"data:image/jpeg;base64,{base64_image}"
+            
+        except Exception as e:
+            print(f"Error processing image: {str(e)}")
+            return None
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=60, min=60, max=180))
+    def extract_coffee_data(self, body_html: str, tags: List[str] = None, scraped_html: str = None, parent_title: str = None, image_url: str = None) -> Dict:
         """Extract structured coffee data from product description using Azure OpenAI"""
         try:
             # Clean and combine text
@@ -95,8 +135,46 @@ class AICoffeeExtractor:
                 text.append("\n=== PRODUCT TAGS ===")
                 text.append(f"Tags: {', '.join(tags)}")
             
-            # Create prompt
-            prompt = f"""Extract coffee product details from this text. Pay special attention to the PRODUCT TITLE for determining if this is a blend or single origin coffee.
+            # Create messages list for chat completion
+            messages = []
+            
+            # If we have an image URL, process and add it
+            if image_url:
+                # Downsample image and convert to base64
+                base64_image = self._downsample_image(image_url)
+                
+                if base64_image:
+                    messages.append({
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": base64_image,
+                                    "detail": "low"  # Use low detail since we've already downsampled
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": "Please analyze this coffee product image."
+                            }
+                        ]
+                    })
+                    
+                    # Get image analysis from GPT-4V
+                    image_completion = self.client.chat.completions.create(
+                        model=self.deployment_name,
+                        messages=messages,
+                        temperature=0.0,
+                        max_tokens=500
+                    )
+                    
+                    # Add image analysis to text
+                    text.append("\n=== IMAGE ANALYSIS ===")
+                    text.append(image_completion.choices[0].message.content)
+            
+            # Create final prompt
+            prompt = f"""Extract coffee product details from this text. Pay special attention to the PRODUCT TITLE for determining if this is a blend or single origin coffee, and consider any details found in the IMAGE ANALYSIS if present.
 
             Return a JSON object with these fields:
             - is_single_origin: true/false/null (if unclear)

@@ -34,39 +34,35 @@ def run_pipeline():
     
     try:
         # Step 1: Initialize/Reset Database
-        logger.info("Initializing database...")
-        if os.path.exists('coffee_data.db'):
-            os.remove('coffee_data.db')
+        logging.info("Initializing database...")
+        init_db()
         
         # Step 2: Scrape Products
-        logger.info("Scraping products from roasters...")
+        logging.info("Scraping products from roasters...")
         scrape_products()  # This function handles its own database initialization
         
-        # Step 3: Log product counts
+        # Get a database session
         session = get_session()
-        product_count = session.execute(text('SELECT COUNT(*) FROM products')).scalar()
-        variant_count = session.execute(text('SELECT COUNT(*) FROM variants')).scalar()
-        beans_count = session.execute(text('SELECT COUNT(*) FROM whole_beans_view')).scalar()
-        logger.info(f"Database contains:")
-        logger.info(f"- {product_count} products")
-        logger.info(f"- {variant_count} variants")
-        logger.info(f"- {beans_count} whole bean products")
         
-        # Step 4: Enhance Products
-        logger.info("Enhancing whole bean products with AI...")
-        enhance_products()
-        
-        # Step 5: Log enhancement results
-        enhanced_count = session.execute(text('SELECT COUNT(*) FROM product_extended_details')).scalar()
-        logger.info(f"Enhanced {enhanced_count} products with AI")
-        
-        # Calculate total runtime
-        runtime = time.time() - start_time
-        logger.info(f"Pipeline completed in {runtime:.2f} seconds")
+        try:
+            # Count products in the beans view
+            beans_count = session.execute(text('SELECT COUNT(*) FROM whole_beans_view')).scalar()
+            logging.info(f"Found {beans_count} coffee products in the whole beans view")
+            
+            # Run AI extraction on all products
+            logging.info("Enhancing products with AI extraction...")
+            enhance_products()
+            
+            logging.info("Pipeline completed successfully!")
+            
+        except Exception as e:
+            logging.error(f"Pipeline failed: {str(e)}")
+            raise
         
     except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}")
+        logging.error(f"Pipeline failed: {str(e)}")
         raise
+    
     finally:
         if session:
             session.close()

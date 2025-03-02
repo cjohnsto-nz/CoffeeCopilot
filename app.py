@@ -5,6 +5,8 @@ from datetime import datetime
 import pandas as pd
 
 def store_data(roaster_name, roaster_url, products_df, variants_df, session):
+    """Store roaster, products, options, and images in the database"""
+    
     # Create or get roaster
     roaster = session.query(Roaster).filter_by(url=roaster_url).first()
     if not roaster:
@@ -46,7 +48,7 @@ def store_data(roaster_name, roaster_url, products_df, variants_df, session):
             for idx, image in enumerate(row['images']):
                 img = ProductImage(
                     product_id=product.id,
-                    url=image.get('src', ''),
+                    src=image.get('src', ''),
                     position=idx + 1
                 )
                 session.add(img)
@@ -73,6 +75,10 @@ def store_data(roaster_name, roaster_url, products_df, variants_df, session):
                 updated_at=pd.to_datetime(variant.get('updated_at')),
                 parent_title=variant.get('parent_title', ''),
                 vendor=variant.get('vendor', ''),
+                weight=variant.get('weight'),
+                weight_unit=variant.get('weight_unit'),
+                barcode=variant.get('barcode'),
+                inventory_quantity=variant.get('inventory_quantity', 0),
                 last_updated=datetime.now()
             )
             session.add(v)

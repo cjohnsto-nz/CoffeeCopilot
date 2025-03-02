@@ -1,8 +1,16 @@
-roaster_urls:
-  rocket: "https://rocketcoffee.co.nz"
-  vanguard: "https://vanguardcoffee.co.nz"
-  grey_coffee: "https://greyroastingco.com/"
-  ozone: "https://ozonecoffee.co.nz"
+roasters:
+  rocket:
+    name: rocket
+    url: https://rocketcoffee.co.nz
+  vanguard:
+    name: vanguard
+    url: https://vanguardcoffee.co.nz
+  grey_coffee:
+    name: grey_coffee
+    url: https://greyroastingco.com/
+  ozone:
+    name: ozone
+    url: https://ozonecoffee.co.nz
 
 ai:
   provider: "azure"  # Future-proofing for other providers
@@ -19,3 +27,7 @@ ai:
   max_retries: 3
   timeout_seconds: 30
   batch_size: 10  # Number of products to process in parallel
+
+image_processing:
+  target_height: 600  # Target height in pixels for downsampled images
+  jpeg_quality: 85    # JPEG compression quality (0-100)
