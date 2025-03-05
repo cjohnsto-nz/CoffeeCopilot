@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, Table, text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, JSON, Table, text, Boolean, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -112,6 +112,7 @@ class ProductExtendedDetails(Base):
     is_single_origin = Column(Boolean)
     origin_country = Column(String(100))
     origin_region = Column(String(100))
+    roast_level = Column(String(50))
     processing_method = Column(String(100))
     varietals = Column(String(500))  # Comma-separated list
     altitude = Column(String(100))
@@ -127,7 +128,18 @@ class ProductExtendedDetails(Base):
 
 def init_db():
     """Initialize the database, creating all tables and views"""
-    Base.metadata.create_all(engine)
+    inspector = inspect(engine)
+    
+    # If product_extended_details exists and doesn't have roast_level, add it
+    if 'product_extended_details' in inspector.get_table_names():
+        columns = [col['name'] for col in inspector.get_columns('product_extended_details')]
+        if 'roast_level' not in columns:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE product_extended_details ADD COLUMN roast_level VARCHAR(50)'))
+                conn.commit()
+    
+    # Create/update all tables
+    Base.metadata.create_all(engine, checkfirst=True)
     create_beans_view(engine)
 
 def create_beans_view(engine):
@@ -156,6 +168,7 @@ def create_beans_view(engine):
             ed.origin_country,
             ed.origin_region,
             ed.processing_method,
+            ed.roast_level,
             ed.varietals,
             ed.altitude,
             ed.farm,
@@ -200,6 +213,7 @@ def create_beans_view(engine):
         rv.origin_country,
         rv.origin_region,
         rv.processing_method,
+        rv.roast_level,
         rv.varietals,
         rv.altitude,
         rv.farm,

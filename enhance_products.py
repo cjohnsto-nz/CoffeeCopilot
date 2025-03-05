@@ -90,6 +90,7 @@ def print_extracted_data(product, coffee_data):
     print("Extracted Data:")
     print(f"Type: {'Single Origin' if coffee_data.get('is_single_origin') else ('Blend' if coffee_data.get('is_single_origin') == False else 'Unknown')}")
     print(f"Origin: {coffee_data.get('origin', {}).get('country')}, {coffee_data.get('origin', {}).get('region')}")
+    print(f"Roast Level: {coffee_data.get('roast_level')}")
     print(f"Process: {coffee_data.get('processing_method')}")
     
     # Handle varietals that might be None
@@ -136,6 +137,7 @@ def store_extended_details(product, coffee_data, session):
         is_single_origin=1 if coffee_data.get('is_single_origin') == True else (0 if coffee_data.get('is_single_origin') == False else None),
         origin_country=coffee_data.get('origin', {}).get('country'),
         origin_region=coffee_data.get('origin', {}).get('region'),
+        roast_level=coffee_data.get('roast_level'),
         processing_method=coffee_data.get('processing_method'),
         varietals=','.join(coffee_data.get('varietals', [])) if coffee_data.get('varietals') else None,
         altitude=coffee_data.get('altitude'),

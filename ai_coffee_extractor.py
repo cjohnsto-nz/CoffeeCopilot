@@ -68,6 +68,7 @@ class AICoffeeExtractor:
                 "country": None,
                 "region": None
             },
+            "roast_level": None,
             "processing_method": None,
             "varietals": [],
             "altitude": None,
@@ -118,7 +119,7 @@ class AICoffeeExtractor:
             print(f"Error processing image: {str(e)}")
             return None
 
-    def _dump_prompt(self, prompt: str, title: str, url: str):
+    def _dump_prompt(self, prompt: str, title: str):
         """Dump prompt to a file for debugging"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
@@ -126,7 +127,6 @@ class AICoffeeExtractor:
         
         with open(filename, "w", encoding="utf-8") as f:
             f.write(f"Product: {title}\n")
-            f.write(f"URL: {url}\n")
             f.write("="*80 + "\n\n")
             f.write(prompt)
             
@@ -201,17 +201,19 @@ class AICoffeeExtractor:
             prompt = f"""Extract coffee product details from this text. Pay special attention to the PRODUCT TITLE for determining if this is a blend or single origin coffee, and consider any details found in the IMAGE ANALYSIS if present.
             Attempt to identify the origin, processing method, varietals, altitude, farm, producer, and tasting notes. 
             You are provided shop data, a scraped html page, and an analysis of the product image in order to extract this information.
+            Extract information specific to the product, ignoring any superfluous information from the image or shop data.
             Return a JSON object with these fields:
             - is_single_origin: true/false/null (if unclear)
               - true if it's from one specific farm, producer, or region
               - false if it contains the word "blend" or mentions multiple origins
               - null if unclear
             - origin: {{"country": string/null, "region": string/null}}
-            - processing_method: string/null
-            - varietals: list of strings
-            - altitude: string/null (include units)
+            - roast_level: string/null
+            - processing_method: string/null, format Proper case, primary; secondary; other where primary is "Washed", "Natural", "Honey", and secondary/other contain information about fermentation or experimental process elements.
+            - varietals: list of strings, may also be called cultivars
+            - altitude: string/null, format XXXX-YYYY if a range, or XXXX if a single value. Convert to masl if necessary, then remove units.
             - farm: string/null
-            - producer: string/null
+            - producer: string/null, producer refers to the bean producer, not the local roaster.
             - tasting_notes: {{
                 "fruits": list of strings,
                 "sweets": list of strings,
@@ -224,7 +226,8 @@ class AICoffeeExtractor:
             Also estimate a recommended resting period in days based on these guidelines:
             - Natural/honey process: 10-14 days
             - Washed process: 7-10 days
-            - Darker roasts: Add 2-3 days
+            - Darker/Espresso roasts: Subtract 2-3 days
+            - Lighter/Filter roasts: Add 2-3 days
             - African varietals (SL28, SL34, Ruiru 11, Batian): Add 1-2 days
             - Dense beans (high altitude >1600m): Add 1-2 days
             Return this as resting_period_days in the JSON.
@@ -233,7 +236,7 @@ class AICoffeeExtractor:
             {'\n'.join(text)}"""
             
             # Dump prompt to file
-            self._dump_prompt(prompt, parent_title or "Unknown", body_html[:200] if body_html else "No HTML")
+            self._dump_prompt(prompt, parent_title or "Unknown")
 
             # Get completion from Azure OpenAI
             completion = self.client.chat.completions.create(
@@ -249,6 +252,7 @@ class AICoffeeExtractor:
             # Ensure all fields exist
             response.setdefault('is_single_origin', None)
             response.setdefault('origin', {'country': None, 'region': None})
+            response.setdefault('roast_level', None)
             response.setdefault('processing_method', None)
             response.setdefault('varietals', [])
             response.setdefault('altitude', None)
