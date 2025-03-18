@@ -5,6 +5,7 @@ This script orchestrates the entire data pipeline:
 1. Scrapes coffee products from roaster websites
 2. Enhances product details using AI
 3. Creates database views for analysis
+4. Provides a coffee recommendation
 """
 
 import os
@@ -15,6 +16,8 @@ from database import init_db, get_session
 from sqlalchemy import text
 from app import main as scrape_products
 from enhance_products import enhance_products
+from recommend_coffee import CoffeeRecommender
+from order_manager import add_coffee_order
 
 # Set up logging
 logging.basicConfig(
@@ -49,23 +52,60 @@ def run_pipeline():
             beans_count = session.execute(text('SELECT COUNT(*) FROM whole_beans_view')).scalar()
             logging.info(f"Found {beans_count} coffee products in the whole beans view")
             
-            # Run AI extraction on all products
+            # Step 3: Enhance Products
             logging.info("Enhancing products with AI extraction...")
             enhance_products()
+            
+            # Step 4: Get Coffee Recommendation
+            logging.info("\nGetting coffee recommendation...")
+            recommender = CoffeeRecommender()
+            
+            # Get and display spending summary
+            history = recommender.get_order_history()
+            spending = recommender.get_spending_summary(history)
+            
+            print("\nSpending Summary:")
+            print("-" * 50)
+            print(f"Current Month: ${spending['current_month']:.2f}")
+            print(f"Last Month: ${spending['last_month']:.2f}")
+            print(f"3-Month Average: ${spending['three_month_average']:.2f}")
+            
+            # Display recent orders
+            print("\nRecent Orders:")
+            print("-" * 50)
+            for coffee in history[:5]:
+                order_date = recommender.parse_date(coffee['order_date']).strftime('%Y-%m-%d')
+                print(f"{order_date}: {coffee['roaster_name']} - {coffee['parent_title']} (${coffee['price']:.2f})")
+            
+            # Get and display recommendation
+            print("\nRecommended Coffee:")
+            print("-" * 50)
+            print()  
+            recommendation = recommender.get_recommendation()
+            print()  
+            print(recommendation)
+            
+            # Ask if user wants to add to order history
+            print("\nWould you like to add this to your order history? (yes/no): ")
+            response = input().strip().lower()
+            
+            if response == 'yes':
+                # Extract coffee name from recommendation
+                coffee_name = recommendation.split('\n')[0].strip()
+                add_coffee_order(coffee_name, datetime.now())
+                print(f"\nAdded {coffee_name} to order history")
             
             logging.info("Pipeline completed successfully!")
             
         except Exception as e:
             logging.error(f"Pipeline failed: {str(e)}")
             raise
-        
-    except Exception as e:
-        logging.error(f"Pipeline failed: {str(e)}")
-        raise
-    
+            
     finally:
         if session:
             session.close()
+        end_time = time.time()
+        logging.info(f"Pipeline execution time: {end_time - start_time:.2f} seconds")
 
 if __name__ == "__main__":
     run_pipeline()

@@ -1,19 +1,28 @@
 roasters:
   rocket:
     name: rocket
+    description: Rocket Coffee
     url: https://rocketcoffee.co.nz
   vanguard:
     name: vanguard
+    description: Vanguard Coffee
     url: https://vanguardcoffee.co.nz
   grey_coffee:
     name: grey_coffee
+    description: Grey Coffee
     url: https://greyroastingco.com/
   ozone:
     name: ozone
+    description: Ozone Coffee
     url: https://ozonecoffee.co.nz
   wolf:
     name: wolf
+    description: Wolf Coffee
     url: https://www.wolfcoffee.co.nz/
+
+preferences:
+  monthly_budget: 100.0  # Monthly coffee budget in NZD
+  budget_flexibility: 0.2  # Allow going over budget by up to 20% for special coffees
 
 ai:
   provider: "azure"  # Future-proofing for other providers

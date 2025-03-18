@@ -1,17 +1,24 @@
 from shopify_scraper import scraper
 from database import init_db, get_session, Roaster, Product, ProductOption, ProductImage, Variant
-from config import ROASTER_URLS
+from config import ROASTER_URLS, config
 from datetime import datetime
 import pandas as pd
 
 def store_data(roaster_name, roaster_url, products_df, variants_df, session):
     """Store roaster, products, options, and images in the database"""
     
+    # Get roaster description from config
+    roaster_description = next((data['description'] for name, data in config['roasters'].items() 
+                              if data['name'] == roaster_name), roaster_name.title())
+    
     # Create or get roaster
     roaster = session.query(Roaster).filter_by(url=roaster_url).first()
     if not roaster:
-        roaster = Roaster(name=roaster_name, url=roaster_url)
+        roaster = Roaster(name=roaster_name, description=roaster_description, url=roaster_url)
         session.add(roaster)
+        session.flush()
+    else:
+        roaster.description = roaster_description  # Update description in case it changed
         session.flush()
 
     # Store products
