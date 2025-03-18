@@ -44,18 +44,37 @@ coffee_copilot/
 
 ## Setup
 
-1. Install the package and its dependencies:
+1. Create and activate a Python virtual environment:
 ```bash
+# Create a virtual environment in the project directory
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+.\venv\Scripts\activate
+# On Unix/MacOS:
+source venv/bin/activate
+
+# Verify activation - your prompt should show (venv)
+# You should see the virtual environment path when running:
+python -c "import sys; print(sys.prefix)"
+```
+
+2. Install the package and its dependencies:
+```bash
+# Install required GitHub packages first
+pip install git+https://github.com/practical-data-science/ShopifyScraper.git
+
 # Install from requirements.txt for development
 pip install -r requirements.txt
 
-# OR install the package directly
+# OR install the package directly (includes all dependencies)
 pip install -e .
 ```
 
-2. Configure your settings in `config.yaml`
+3. Configure your settings in `config.yaml`
 
-3. Create a `.env` file with your Azure OpenAI credentials:
+4. Create a `.env` file with your Azure OpenAI credentials:
 ```
 AZURE_OPENAI_API_KEY=your_api_key
 AZURE_OPENAI_ENDPOINT=your_endpoint
@@ -63,7 +82,7 @@ AZURE_OPENAI_API_VERSION=your_api_version
 AZURE_OPENAI_DEPLOYMENT=your_deployment_name
 ```
 
-4. Run the pipeline:
+5. Run the pipeline:
 ```bash
 python run_pipeline.py
 ```
