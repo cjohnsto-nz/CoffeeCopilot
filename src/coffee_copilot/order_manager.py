@@ -1,7 +1,9 @@
 from datetime import datetime
+import json
 from typing import Optional, Dict, Any
-from database import get_session, Product, Variant, ProductExtendedDetails, OrderHistory
+from coffee_copilot.database import get_session, Product, Variant, ProductExtendedDetails, OrderHistory
 from sqlalchemy import text
+import logging
 
 def add_order(
     product_id: int,

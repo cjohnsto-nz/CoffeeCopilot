@@ -2,9 +2,14 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+import os
+
+# Create data directory if it doesn't exist
+data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+os.makedirs(data_dir, exist_ok=True)
 
 # Create engine with SQLite's native Unicode support
-engine = create_engine('sqlite:///coffee_data.db', connect_args={'check_same_thread': False})
+engine = create_engine(f'sqlite:///{os.path.join(data_dir, "coffee_data.db")}', connect_args={'check_same_thread': False})
 Base = declarative_base()
 
 class Roaster(Base):

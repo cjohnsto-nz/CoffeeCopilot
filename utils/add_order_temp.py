@@ -1,5 +1,5 @@
 from datetime import datetime
-from order_manager import find_product_by_name, add_order
+from coffee_copilot.order_manager import find_product_by_name, add_order
 
 def add_coffee_order(name, date):
     product = find_product_by_name(name)

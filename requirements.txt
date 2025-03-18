@@ -5,3 +5,5 @@ beautifulsoup4>=4.12.0
 python-dotenv>=1.0.0  # For environment variables
 tenacity>=8.0.0  # For retries
 Pillow
+git+https://github.com/practical-data-science/ShopifyScraper.git
+requests>=2.31.0

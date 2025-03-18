@@ -1,16 +1,17 @@
 from typing import Dict, List, Optional
 import json
 import os
-from openai import AzureOpenAI
+import requests
 from bs4 import BeautifulSoup
+from openai import AzureOpenAI
 import yaml
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
-import requests
 from io import BytesIO
 from PIL import Image
 import base64
 from datetime import datetime
+import logging
 
 class AICoffeeExtractor:
     def __init__(self):
@@ -36,7 +37,7 @@ class AICoffeeExtractor:
         self.max_retries = self.ai_config['max_retries']
         
         # Create prompt logs directory
-        self.prompt_log_dir = "prompt_logs/extractions"
+        self.prompt_log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'logs', 'prompts', 'extractions')
         os.makedirs(self.prompt_log_dir, exist_ok=True)
         
     def _clean_html(self, html_content: str) -> str:
@@ -147,7 +148,7 @@ class AICoffeeExtractor:
             # Add original body_html
             if body_html:
                 text.append("\n=== SHOPIFY PRODUCT DESCRIPTION ===")
-                text.append(self._clean_html(body_html))
+                text.append(body_html)
             
             # Add scraped HTML content if available
             if scraped_html:

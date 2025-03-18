@@ -1,6 +1,6 @@
 from shopify_scraper import scraper
-from database import init_db, get_session, Roaster, Product, ProductOption, ProductImage, Variant
-from config import ROASTER_URLS, config
+from coffee_copilot.database import init_db, get_session, Roaster, Product, ProductOption, ProductImage, Variant
+from coffee_copilot.config import ROASTER_URLS, config
 from datetime import datetime
 import pandas as pd
 
