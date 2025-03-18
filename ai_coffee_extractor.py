@@ -36,7 +36,7 @@ class AICoffeeExtractor:
         self.max_retries = self.ai_config['max_retries']
         
         # Create prompt logs directory
-        self.prompt_log_dir = "prompt_logs"
+        self.prompt_log_dir = "prompt_logs/extractions"
         os.makedirs(self.prompt_log_dir, exist_ok=True)
         
     def _clean_html(self, html_content: str) -> str:
