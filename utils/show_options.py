@@ -1,4 +1,4 @@
-from database import get_session
+from coffee_copilot.database import get_session
 from sqlalchemy import text
 
 def show_available_options():

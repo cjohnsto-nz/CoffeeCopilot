@@ -1,13 +1,13 @@
 import os
-from dotenv import load_dotenv
-from datetime import datetime
-from database import get_session
-from sqlalchemy import text
-from order_manager import add_coffee_order
-import yaml
 import json
-from openai import AzureOpenAI
 import sys
+from datetime import datetime
+from dotenv import load_dotenv
+from coffee_copilot.database import get_session
+from sqlalchemy import text
+from openai import AzureOpenAI
+import yaml
+import logging
 
 class CoffeeRecommender:
     def __init__(self):
@@ -31,7 +31,7 @@ class CoffeeRecommender:
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
         
         # Create prompt logs directory
-        self.prompt_log_dir = "prompt_logs/recommendations"
+        self.prompt_log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'logs', 'prompts', 'recommendations')
         os.makedirs(self.prompt_log_dir, exist_ok=True)
     
     def _dump_prompt(self, prompt: str, context: str):
@@ -271,6 +271,7 @@ def main():
         if response == 'yes':
             # Extract coffee name from recommendation
             coffee_name = recommendation.split('\n')[0].strip()
+            from coffee_copilot.order_manager import add_coffee_order
             add_coffee_order(coffee_name, datetime.now())
             print(f"\nAdded {coffee_name} to order history")
         else:

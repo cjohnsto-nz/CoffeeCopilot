@@ -1,10 +1,8 @@
-from database import get_session, Product, ProductExtendedDetails, ProductImage
-from ai_coffee_extractor import AICoffeeExtractor
+from coffee_copilot.database import get_session, Product, ProductExtendedDetails, ProductImage
+from coffee_copilot.ai_coffee_extractor import AICoffeeExtractor
 from sqlalchemy import text
 from datetime import datetime
-import json
 import requests
-from bs4 import BeautifulSoup
 
 def get_product_html(url):
     """Get the complete HTML content from a product URL"""
@@ -39,6 +37,7 @@ def enhance_products():
     for i, product in enumerate(products, 1):
         print(f"\nProcessing [{i}/{total_products}]: {product.parent_title}")
         print(f"URL: {product.product_url}")
+        print(f"Body HTML length: {len(product.body_html) if product.body_html else 0}")  # Debug line
         
         # Get the complete HTML content
         scraped_html = get_product_html(product.product_url)

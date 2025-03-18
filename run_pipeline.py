@@ -12,19 +12,23 @@ import os
 import time
 from datetime import datetime
 import logging
-from database import init_db, get_session
+from coffee_copilot.database import init_db, get_session
 from sqlalchemy import text
-from app import main as scrape_products
-from enhance_products import enhance_products
-from recommend_coffee import CoffeeRecommender
-from order_manager import add_coffee_order
+from coffee_copilot.app import main as scrape_products
+from coffee_copilot.enhance_products import enhance_products
+from coffee_copilot.recommend_coffee import CoffeeRecommender
+from coffee_copilot.order_manager import add_coffee_order
+
+# Create logs directory if it doesn't exist
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(log_dir, exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('pipeline.log'),
+        logging.FileHandler(os.path.join(log_dir, 'pipeline.log')),
         logging.StreamHandler()
     ]
 )

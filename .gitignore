@@ -4,31 +4,35 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual Environment
-.venv/
+.env
+.venv
+env/
 venv/
 ENV/
-
-# Database
-*.db
-*.sqlite3
 
 # IDE
 .vscode/
 .idea/
 
-# Logs
+# Project-specific
+data/
+logs/
+*.db
 *.log
-
-# Local development
-.env
-.env.local
-.env.*.local
-
-# Project specific
-prompt_logs/
-
-# OS
-.DS_Store
-Thumbs.db
