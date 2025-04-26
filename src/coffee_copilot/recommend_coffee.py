@@ -33,6 +33,14 @@ class CoffeeRecommender:
         # Create prompt logs directory
         self.prompt_log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'logs', 'prompts', 'recommendations')
         os.makedirs(self.prompt_log_dir, exist_ok=True)
+        
+        # Initialize conversation history
+        self.conversation_history = [
+            {"role": "system", "content": "You are a coffee recommendation assistant that helps users discover new and interesting coffees based on their order history and preferences."}
+        ]
+        
+        # Track rejected recommendations
+        self.rejected_recommendations = []
     
     def _dump_prompt(self, prompt: str, context: str):
         """Dump prompt to a file for debugging"""
@@ -52,17 +60,15 @@ class CoffeeRecommender:
                 oh.product_id,
                 oh.variant_id,
                 oh.order_date,
-                wb.parent_title,
+                oh.product_title as parent_title,
                 r.description as roaster_name,
-                wb.processing_method,
-                wb.origin_country,
-                json(wb.tasting_notes) as tasting_notes,
+                oh.processing_method,
+                oh.origin_country,
+                json(oh.tasting_notes) as tasting_notes,
                 oh.price_paid as price,
-                p.url
+                oh.product_url as url
             FROM order_history oh
-            JOIN whole_beans_view wb ON oh.product_id = wb.product_id
-            JOIN products p ON wb.product_id = p.id
-            JOIN roasters r ON p.roaster_id = r.id
+            LEFT JOIN roasters r ON oh.roaster_name = r.name OR oh.roaster_name = r.description
             ORDER BY oh.order_date DESC
         """)
         results = session.execute(query)
@@ -70,7 +76,15 @@ class CoffeeRecommender:
         for row in results:
             row_dict = dict(row._mapping)
             if row_dict['tasting_notes']:
-                row_dict['tasting_notes'] = json.loads(row_dict['tasting_notes'])
+                try:
+                    # Handle case where tasting_notes is already a JSON string
+                    if isinstance(row_dict['tasting_notes'], str):
+                        row_dict['tasting_notes'] = json.loads(row_dict['tasting_notes'])
+                except (json.JSONDecodeError, TypeError):
+                    # If tasting_notes is not valid JSON
+                    row_dict['tasting_notes'] = {}
+            else:
+                row_dict['tasting_notes'] = {}
             rows.append(row_dict)
         return rows
 
@@ -158,7 +172,7 @@ class CoffeeRecommender:
         
         return " | ".join(parts)
 
-    def get_recommendation(self):
+    def get_recommendation(self, rejection_reason=None):
         # Get data
         history = self.get_order_history()
         options = self.get_available_options()
@@ -174,31 +188,40 @@ class CoffeeRecommender:
         process_counts = {}
         ordered_product_ids = set()
         
-        for coffee in history:
-            ordered_product_ids.add(coffee['product_id'])
-            roaster_counts[coffee['roaster_name']] = roaster_counts.get(coffee['roaster_name'], 0) + 1
-            if coffee['origin_country']:
-                origin_counts[coffee['origin_country']] = origin_counts.get(coffee['origin_country'], 0) + 1
-            if coffee['processing_method']:
-                process_counts[coffee['processing_method']] = process_counts.get(coffee['processing_method'], 0) + 1
+        for order in history:
+            roaster = order.get('roaster_name', 'Unknown')
+            origin = order.get('origin_country', 'Unknown')
+            process = order.get('processing_method', 'Unknown')
+            product_id = order.get('product_id')
+            
+            roaster_counts[roaster] = roaster_counts.get(roaster, 0) + 1
+            origin_counts[origin] = origin_counts.get(origin, 0) + 1
+            process_counts[process] = process_counts.get(process, 0) + 1
+            
+            if product_id:
+                ordered_product_ids.add(product_id)
         
-        # Filter out ordered coffees from options
-        available_options = [opt for opt in options if opt['product_id'] not in ordered_product_ids]
+        # Format data for the prompt
+        history_formatted = "\n".join([f"{i+1}. {self.format_coffee_data(coffee)}" for i, coffee in enumerate(history[:10])])
+        options_formatted = "\n".join([f"{i+1}. [{option['product_id']},{option['variant_id']}] {option['roaster_name']} - {option['parent_title']} | {option['origin_country'] or 'Unknown origin'} | {option['processing_method'] or 'Unknown process'} | ${option['price']:.2f} | {option['url']}" for i, option in enumerate(options)])
         
-        # Format history and options
-        history_formatted = "\n".join(self.format_coffee_data(coffee) for coffee in history[:5])
-        options_formatted = "\n".join(self.format_coffee_data(coffee) for coffee in available_options)
+        # Include rejected recommendations and reasons if available
+        rejected_info = ""
+        if self.rejected_recommendations:
+            rejected_info = "\nPreviously rejected recommendations:\n"
+            for i, (coffee, reason) in enumerate(self.rejected_recommendations):
+                rejected_info += f"{i+1}. {coffee}" + (f" - Reason: {reason}" if reason else "") + "\n"
         
-        # Format the prompt
-        prompt = f"""You are a coffee expert helping select the next coffee to try. Your goal is to help the user explore new and different coffee experiences.
+        # Create prompt
+        prompt = f"""I need a coffee recommendation based on my order history and available options.
 
-Recent order history (from newest to oldest) - DO NOT recommend any coffees from this list:
-{"="*80}
+Order History (most recent first):
 {history_formatted}
 
-Available options to choose from - You MUST select from this list:
+Available options:
 {"="*80}
 {options_formatted}
+{rejected_info}
 
 Based on the order history and available options, recommend ONE coffee that would maximize variety in terms of roaster, origin, processing method, and tasting notes.
 
@@ -223,19 +246,30 @@ CRITICAL INSTRUCTIONS:
 7. Do not include headings or sections
 8. Do not mention price unless it's a special coffee that exceeds the monthly budget"""
         
+        # Add rejection reason to conversation history if provided
+        if rejection_reason:
+            self.conversation_history.append({"role": "user", "content": f"I didn't like the previous recommendation because: {rejection_reason}"})
+        
+        # Add the current prompt to conversation history
+        self.conversation_history.append({"role": "user", "content": prompt})
+        
         # Save prompt for debugging (silently)
         context = f"Order History: {len(history)} orders\nAvailable Options: {len(options)} coffees\nCurrent Month Spend: ${spending['current_month']:.2f}\nRemaining Budget: ${remaining_budget:.2f}"
         self._dump_prompt(prompt, context)
         
-        # Get recommendation from GPT-4
+        # Get recommendation from GPT-4 using conversation history
         completion = self.client.chat.completions.create(
             model=self.deployment_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=self.conversation_history,
             temperature=0.7,
             max_tokens=500
         )
         
-        return completion.choices[0].message.content
+        # Add the response to conversation history
+        response_content = completion.choices[0].message.content
+        self.conversation_history.append({"role": "assistant", "content": response_content})
+        
+        return response_content
 
 def main():
     try:
