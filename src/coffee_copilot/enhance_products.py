@@ -280,6 +280,9 @@ def enhance_single_product(product_id):
     # Store the extended details
     store_extended_details(product, coffee_data, session)
     session.commit()
+    
+    # Close the session to avoid resource leaks
+    session.close()
     return True
 
 if __name__ == "__main__":
