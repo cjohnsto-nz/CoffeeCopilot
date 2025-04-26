@@ -43,3 +43,6 @@ ai:
 image_processing:
   target_height: 600  # Target height in pixels for downsampled images
   jpeg_quality: 85    # JPEG compression quality (0-100)
+
+database:
+  filename: "coffee_data_new.db"  # Database filename

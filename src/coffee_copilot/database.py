@@ -3,13 +3,22 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import os
+import yaml
 
 # Create data directory if it doesn't exist
 data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
 os.makedirs(data_dir, exist_ok=True)
 
+# Load configuration
+config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.yaml')
+with open(config_path, 'r') as f:
+    config = yaml.safe_load(f)
+
+# Get database filename from config with fallback to default
+db_filename = config.get('database', {}).get('filename', 'coffee_data_new.db')
+
 # Create engine with SQLite's native Unicode support
-engine = create_engine(f'sqlite:///{os.path.join(data_dir, "coffee_data_new.db")}', connect_args={'check_same_thread': False})
+engine = create_engine(f'sqlite:///{os.path.join(data_dir, db_filename)}', connect_args={'check_same_thread': False})
 Base = declarative_base()
 
 class Roaster(Base):
