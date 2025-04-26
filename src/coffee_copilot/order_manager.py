@@ -253,6 +253,78 @@ def find_product_by_name(name: str, session = None) -> Dict[str, Any]:
         if session_created:
             session.close()
 
+def blacklist_coffee(coffee_name: str, reason: str):
+    """Blacklist a coffee product to exclude it from future recommendations
+    
+    Args:
+        coffee_name: Name of the coffee to blacklist (can be in format "[product_id,variant_id] Roaster - Coffee")
+        reason: Reason for blacklisting
+    """
+    session = get_session()
+    
+    try:
+        # Check if the name includes product and variant IDs
+        if coffee_name.startswith('[') and ']' in coffee_name:
+            # Extract IDs from format "[product_id,variant_id] Roaster - Coffee"
+            id_part = coffee_name[1:coffee_name.index(']')]
+            product_id, variant_id = map(int, id_part.split(','))
+            
+            # Get the product
+            product = session.query(Product).filter(Product.id == product_id).first()
+            if not product:
+                raise ValueError(f"Product with ID {product_id} not found")
+                
+            # Get or create extended details
+            extended_details = product.extended_details
+            if not extended_details:
+                extended_details = ProductExtendedDetails(product_id=product.id)
+                session.add(extended_details)
+            
+            # Mark as blacklisted
+            extended_details.is_blacklisted = True
+            extended_details.blacklist_reason = reason
+            session.commit()
+            
+            print(f"\nBlacklisted {product.parent_title or product.title} - Reason: {reason}")
+            
+        else:
+            # Try to find by name
+            query = text("""
+                SELECT p.id, p.title, p.parent_title
+                FROM products p
+                WHERE p.parent_title = :title OR p.title = :title
+                LIMIT 1
+            """)
+            result = session.execute(query, {"title": coffee_name}).fetchone()
+            
+            if not result:
+                raise ValueError(f"Could not find product matching \"{coffee_name}\"")
+                
+            product_id = result.id
+            title = result.parent_title or result.title
+            
+            # Get or create extended details
+            extended_details = session.query(ProductExtendedDetails).filter(
+                ProductExtendedDetails.product_id == product_id
+            ).first()
+            
+            if not extended_details:
+                extended_details = ProductExtendedDetails(product_id=product_id)
+                session.add(extended_details)
+            
+            # Mark as blacklisted
+            extended_details.is_blacklisted = True
+            extended_details.blacklist_reason = reason
+            session.commit()
+            
+            print(f"\nBlacklisted {title} - Reason: {reason}")
+            
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
 def add_coffee_order(coffee_name: str, order_date: datetime):
     """Add a coffee order to the order history"""
     session = get_session()
@@ -273,7 +345,8 @@ def add_coffee_order(coffee_name: str, order_date: datetime):
                     SELECT 
                         wb.product_id,
                         wb.variant_id,
-                        r.description as roaster_name,
+                        r.name as roaster_name,
+                        r.description as roaster_description,
                         wb.parent_title,
                         wb.url as product_url,
                         v.option1,
@@ -309,7 +382,8 @@ def add_coffee_order(coffee_name: str, order_date: datetime):
                         SELECT 
                             wb.product_id,
                             wb.variant_id,
-                            r.description as roaster_name,
+                            r.name as roaster_name,
+                        r.description as roaster_description,
                             wb.parent_title,
                             wb.url as product_url,
                             v.option1,
@@ -343,7 +417,8 @@ def add_coffee_order(coffee_name: str, order_date: datetime):
                 SELECT 
                     wb.product_id,
                     wb.variant_id,
-                    r.description as roaster_name,
+                    r.name as roaster_name,
+                        r.description as roaster_description,
                     wb.parent_title,
                     wb.url as product_url,
                     v.option1,
@@ -400,7 +475,7 @@ def add_coffee_order(coffee_name: str, order_date: datetime):
         
         session.add(order)
         session.commit()
-        print(f"\nAdded {result.roaster_name} - {result.parent_title} to order history")
+        print(f"\nAdded {result.roaster_description} - {result.parent_title} to order history")
         
     except Exception as e:
         session.rollback()

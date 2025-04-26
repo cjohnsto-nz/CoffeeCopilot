@@ -15,19 +15,26 @@ coffee_copilot/
 │       ├── database.py            # Database models and operations
 │       ├── enhance_products.py    # Product enhancement logic
 │       ├── order_manager.py       # Order history management
-│       └── recommend_coffee.py    # Recommendation engine
+│       ├── recommend_coffee.py    # Recommendation engine
+│       └── utils/                 # Utility modules
+│           ├── __init__.py
+│           └── db_migration.py    # Database migration helpers
 ├── data/                       # SQLite database and other data files (created at runtime)
-│   ├── coffee_data.db
+│   ├── coffee_data_new.db      # Database with URL-based product identification
 ├── logs/                      # Log files and extraction prompts (created at runtime)
 │   ├── prompts
 │   │   ├── extractions
 │   │   └── recommendations
 │   └── recommendations
-├── utils/                     # Utility scripts
-│   ├── add_order_temp.py     # Add orders manually
-│   └── show_options.py       # Display available coffees
+├── migrations/                # Alembic database migrations
+│   ├── versions/              # Migration script versions
+│   ├── env.py                # Alembic environment configuration
+│   ├── README.md             # Migration documentation
+│   └── script.py.mako        # Migration script template
 ├── .env                      # Environment variables (create from template)
-├── config.yaml              # Configuration values
+├── alembic.ini               # Alembic configuration
+├── config.yaml               # Configuration values
+├── migrate_order_history.py  # Script to migrate order history between databases
 ├── requirements.txt         # Python dependencies
 ├── setup.py                # Package setup and installation
 └── run_pipeline.py         # Main entry point
@@ -38,9 +45,13 @@ coffee_copilot/
 - Scrapes coffee products from specialty roasters
 - Uses AI to extract and enhance coffee details
 - Tracks order history and spending patterns
-- Provides personalized coffee recommendations
+- Provides personalized coffee recommendations with contextual awareness
 - Ensures variety in recommendations
 - Prevents duplicate recommendations of previously ordered coffees
+- Uses URL-based product identification to prevent duplication
+- Preserves variant IDs to maintain order history integrity
+- Captures user feedback to improve future recommendations
+- Supports optional blacklisting of rejected recommendations
 
 ## Setup
 
@@ -87,10 +98,49 @@ AZURE_OPENAI_DEPLOYMENT=your_deployment_name
 python run_pipeline.py
 ```
 
-## Utility Scripts
+## Database Management
 
-- `utils/add_order_temp.py`: Manually add orders to your history
-- `utils/show_options.py`: See available coffees you haven't tried
+### Migrations
+
+The project uses Alembic for database migrations:
+
+```bash
+# Apply all pending migrations
+alembic upgrade head
+
+# Create a new migration
+alembic revision --autogenerate -m "Description of changes"
+```
+
+### Order History Migration
+
+To migrate order history from the old database to the new one:
+
+```bash
+python migrate_order_history.py
+```
+
+This script intelligently matches products and variants between databases to preserve all order history.
+
+## Recommendation System
+
+The recommendation system has been enhanced with several improvements:
+
+### Conversation Context
+
+The system maintains conversation context between recommendations in the same session using OpenAI's chat API. This allows the AI to remember previous recommendations and user feedback, leading to more personalized suggestions over time.
+
+### User Feedback Loop
+
+When a user rejects a recommendation, the system:
+1. Captures feedback on why the coffee wasn't appealing
+2. Stores this feedback for future reference
+3. Uses the feedback to inform the next recommendation
+4. Optionally allows blacklisting the coffee
+
+### Data Integrity
+
+The system now uses URL-based product identification to prevent duplication issues and preserve variant IDs across scraper runs. This ensures that order history relationships remain intact and recommendations are based on accurate data.
 
 ## Development
 
@@ -109,3 +159,4 @@ This will install all required dependencies:
 - pyyaml
 - beautifulsoup4
 - requests
+- alembic

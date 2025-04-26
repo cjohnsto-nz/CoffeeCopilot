@@ -9,7 +9,7 @@ data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__
 os.makedirs(data_dir, exist_ok=True)
 
 # Create engine with SQLite's native Unicode support
-engine = create_engine(f'sqlite:///{os.path.join(data_dir, "coffee_data.db")}', connect_args={'check_same_thread': False})
+engine = create_engine(f'sqlite:///{os.path.join(data_dir, "coffee_data_new.db")}', connect_args={'check_same_thread': False})
 Base = declarative_base()
 
 class Roaster(Base):
@@ -38,7 +38,7 @@ class Product(Base):
     vendor = Column(String)
     product_type = Column(String)
     tags = Column(String)
-    url = Column(String(500))
+    url = Column(String(500), unique=True)  # Added unique constraint
     parent_title = Column(String(200))
     last_updated = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -127,6 +127,8 @@ class ProductExtendedDetails(Base):
     tasting_notes = Column(JSON)
     resting_period_days = Column(Integer)
     extraction_confidence = Column(Float)
+    is_blacklisted = Column(Boolean, default=False)
+    blacklist_reason = Column(String(500))
     last_updated = Column(DateTime, default=datetime.now)
     
     # Relationships
@@ -324,6 +326,7 @@ def create_available_options_view(engine):
         p.url
     FROM whole_beans_view wb
     JOIN products p ON wb.product_id = p.id
+    LEFT JOIN product_extended_details ped ON wb.product_id = ped.product_id
     WHERE NOT EXISTS (
         SELECT 1 
         FROM order_history oh 
@@ -331,6 +334,7 @@ def create_available_options_view(engine):
         AND oh.variant_id = wb.variant_id
     )
     AND wb.coffee_type = 'Single Origin'
+    AND (ped.is_blacklisted IS NULL OR ped.is_blacklisted = 0)
     ORDER BY wb.roaster_name, wb.parent_title
     """)
     

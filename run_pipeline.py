@@ -89,15 +89,59 @@ def run_pipeline():
             print()  
             print(recommendation)
             
-            # Ask if user wants to add to order history
-            print("\nWould you like to add this to your order history? (yes/no): ")
-            response = input().strip().lower()
+            # Loop for handling recommendations until user is satisfied
+            getting_recommendations = True
             
-            if response == 'yes':
+            while getting_recommendations:
                 # Extract coffee name from recommendation
                 coffee_name = recommendation.split('\n')[0].strip()
-                add_coffee_order(coffee_name, datetime.now())
-                print(f"\nAdded {coffee_name} to order history")
+                
+                # Ask if user wants to add to order history, get another recommendation, or skip
+                print("\nOptions:")
+                print("1. Add to order history")
+                print("2. Get another recommendation")
+                print("3. Skip (do nothing)")
+                print("\nYour choice (1/2/3): ")
+                response = input().strip().lower()
+                
+                if response == '1':
+                    # Add to order history
+                    add_coffee_order(coffee_name, datetime.now())
+                    print(f"\nAdded {coffee_name} to order history")
+                    getting_recommendations = False
+                    
+                elif response == '2':
+                    # Always ask for feedback/reason regardless of blacklisting
+                    print("\nWhy didn't you like this recommendation? (Press Enter to skip): ")
+                    rejection_reason = input().strip()
+                    
+                    # Store the rejected recommendation
+                    if coffee_name not in [rec[0] for rec in recommender.rejected_recommendations]:
+                        recommender.rejected_recommendations.append((coffee_name, rejection_reason))
+                    
+                    # Ask if user wants to blacklist this coffee
+                    print("\nWould you like to blacklist this coffee? (yes/no): ")
+                    blacklist_response = input().strip().lower()
+                    
+                    if blacklist_response == 'yes':
+                        # Blacklist the coffee using the already provided reason
+                        from coffee_copilot.order_manager import blacklist_coffee
+                        blacklist_coffee(coffee_name, rejection_reason)
+                        print(f"\nBlacklisted {coffee_name}")
+                    else:
+                        print("\nCoffee not blacklisted")
+                    
+                    # Get a new recommendation, passing the rejection reason
+                    print("\nGetting another recommendation...\n")
+                    recommendation = recommender.get_recommendation(rejection_reason)
+                    print(recommendation)
+                    
+                    # Continue the loop to handle the new recommendation
+                    
+                else:  # response == '3' or any other input
+                    # Skip
+                    print("\nSkipped. No changes made.")
+                    getting_recommendations = False
             
             logging.info("Pipeline completed successfully!")
             
