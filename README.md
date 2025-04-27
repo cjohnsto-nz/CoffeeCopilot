@@ -2,6 +2,14 @@
 
 An AI-powered coffee recommendation system that helps you discover new specialty coffees based on your order history and preferences.
 
+
+https://github.com/user-attachments/assets/0953f802-1d17-4a72-abfb-cff60136bc9a
+
+
+## Demo
+
+
+
 ## Project Structure
 
 ```
